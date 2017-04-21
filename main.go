@@ -7,6 +7,8 @@ import (
 	"net/http"
 
 	"github.com/bdenning/go-pushover"
+
+	"github.com/spf13/pflag"
 )
 
 type (
@@ -19,16 +21,29 @@ type (
 		Name      string `xml:"CountyName"`
 		Condition string `xml:"ConditionEnglish"`
 	}
+
+	options struct {
+		userKey  string
+		appKey   string
+		counties []string
+	}
 )
 
 func main() {
+	var options options
+	pflag.StringVarP(&options.userKey, "userkey", "u", "", "Pushover Userkey. REQUIRED.")
+	pflag.StringVarP(&options.appKey, "appkey", "a", "", "Pushover Appkey. REQUIRED.")
+	pflag.StringSliceVarP(&options.counties, "counties", "c", []string{}, "Counties to check. REQUIRED.")
+	pflag.Parse()
 
 	url := "http://novascotia.ca/natr/forestprotection/wildfire/burnsafe/counties.xml"
+	web := "http://novascotia.ca/natr/forestprotection/wildfire/burnsafe/"
 	client := http.Client{}
 	res, err := client.Get(url)
 
 	if err != nil {
 		fmt.Println("Couldn't fetch XML from: ", url)
+		return
 	}
 
 	b := new(bytes.Buffer)
@@ -43,16 +58,26 @@ func main() {
 		fmt.Println("Failed to unmarshal data: ", err.Error())
 	}
 
-	for _, county := range Counties.County {
-		if county.Name == "Lunenburg" {
-			token := ""
-			user := ""
-
-			message := pushover.NewMessage(token, user)
-
-			report := fmt.Sprintf("County: %s, Status: %s", county.Name, county.Condition)
-			res, err := message.Push(report)
-		}
+	if len(Counties.County) == 0 {
+		fmt.Println("No XML data yet, try after 14:00.")
+		return
 	}
 
+	conditions := make(map[string]string)
+	conditions["Burn"] = "Burning is permitted between the hours of 2pm and 8am the following day."
+	conditions["Restricted"] = "Burning is permitted between the hours of 7pm and 8am the following day."
+
+	for _, county := range Counties.County {
+		for _, userCounty := range options.counties {
+			if county.Name == userCounty {
+				message := pushover.NewMessage(options.appKey, options.userKey)
+				report := fmt.Sprintf("County: %s, Status: %s\n%s\n\n%s", county.Name, county.Condition, conditions[county.Condition], web)
+				_, err := message.Push(report)
+
+				if err != nil {
+					fmt.Printf("Error sending notification: %s\n", err.Error())
+				}
+			}
+		}
+	}
 }
