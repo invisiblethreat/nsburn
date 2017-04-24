@@ -7,7 +7,6 @@ import (
 	"net/http"
 
 	"github.com/bdenning/go-pushover"
-
 	"github.com/spf13/pflag"
 )
 
@@ -40,6 +39,10 @@ func main() {
 	web := "http://novascotia.ca/natr/forestprotection/wildfire/burnsafe/"
 	client := http.Client{}
 	res, err := client.Get(url)
+
+	if res != nil {
+		defer res.Body.Close()
+	}
 
 	if err != nil {
 		fmt.Println("Couldn't fetch XML from: ", url)
